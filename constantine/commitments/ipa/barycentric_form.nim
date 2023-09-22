@@ -8,8 +8,11 @@
 import 
  ../../../constantine/math/config/[type_ff, curves],
  ../../../constantine/math/elliptic/ec_twistededwards_projective,
- ../../../constantine/math/arithmetic/[finite_fields, bigints,bigints_montgomery]
-
+ ../../../constantine/math/arithmetic/[finite_fields, bigints,bigints_montgomery],
+ ../../../constantine/math/config/curves,
+ ../../../constantine/math/arithmetic,
+ ../../platforms/bithacks,
+ ../../../constantine/math/polynomials/polynomials
 # ############################################################
 #
 #       Barycentric Form using Precompute Optimisation
@@ -18,10 +21,12 @@ import
 
 # Please refer to https://hackmd.io/mJeCRcawTRqr9BooVpHv5g 
 type 
- PrecomputedWeights = object
+ PrecomputedWeights* = object
   barycentricWeights: seq[ECP_TwEdwards_Prj[Fp[Banderwagon]]]
   invertedDomain: seq[ECP_TwEdwards_Prj[Fp[Banderwagon]]]
-
+  
+type
+  EC_P* = ECP_TwEdwards_Prj[Fp[Banderwagon]]
 # The domain size shall always be equal to 256, because this the degree of the polynomial we want to commit to
 const
  DOMAIN: uint64 = 256
@@ -71,13 +76,8 @@ func new_precomputed_weights* [PrecomputedWeightsObj: var PrecomputedWeights] ()
   inverseWeights.z.inv(weights.z)
 
 
-  barycentricWeightsInst[i].x = weights.x
-  barycentricWeightsInst[i].y = weights.y
-  barycentricWeightsInst[i].z = weights.z
-
-  barycentricWeightsInst[i+midpoint].x = inverseWeights.x
-  barycentricWeightsInst[i+midpoint].y = inverseWeights.y
-  barycentricWeightsInst[i+midpoint].z = inverseWeights.z
+  barycentricWeightsInst[i] = weights
+  barycentricWeightsInst[i+midpoint] = inverseWeights
 
   midpoint = DOMAIN - 1
   var invertedDomain: seq[ECP_TwEdwards_Prj[Fp[Banderwagon]]] = newSeq[ECP_TwEdwards_Prj[Fp[Banderwagon]]](midpoint * 2)
@@ -99,13 +99,11 @@ func new_precomputed_weights* [PrecomputedWeightsObj: var PrecomputedWeights] ()
 
    neg_k.diff(zero, k)
 
-   invertedDomain[i-1].x = k.x
-   invertedDomain[i-1].y = k.y
-   invertedDomain[i-1].z = k.z
+   invertedDomain[i-1] = k
 
-   invertedDomain[(i-1) + midpoint].x = neg_k.x
-   invertedDomain[(i-1) + midpoint].y = neg_k.y
-   invertedDomain[(i-1) + midpoint].z = neg_k.z
+
+   invertedDomain[(i-1) + midpoint] = neg_k
+
    PrecomputedWeightsObj = {barycentricWeightsInst, invertedDomain}
 
    return PrecomputedWeightsObj
@@ -113,7 +111,51 @@ func new_precomputed_weights* [PrecomputedWeightsObj: var PrecomputedWeights] ()
 # func BatchInversion(points : seq[ECP_TwEdwards_Prj[Fp[Banderwagon]]]) : seq[ECP_TwEdwards_Prj[Fp[Banderwagon]]] =
 #  var result : array[len(points),ECP_TwEdwards_Prj[Fp[Banderwagon]]]
 
-func compute_barycentric_coefficients* [PrecomputedWeightsObj]( point : ECP_TwEdwards_Prj[Fp[Banderwagon]]): seq[ECP_TwEdwards_Prj[Fp[Banderwagon]]] =
+func computeZMinusXi* (invRootsMinusZ: var array[DOMAIN, EC_P], earlyReturnOnZero: static bool) : EC_P = 
+  var accInv{.noInit.}: EC_P
+  var rootsMinusZ{.noInit.}: array[DOMAIN, EC_P]
+
+  accInv.x.setOne()
+  accInv.y.setOne()
+  accInv.z.setOne()
+
+  var index0 = -1
+
+  when earlyReturnOnZero: # Split computation in 2 phases
+    for i in 0 ..< N:
+      rootsMinusZ[i].diff(domain.rootsOfUnity[i], z)
+      if rootsMinusZ[i].isZero().bool():
+        return i
+
+  for i in 0 ..< DOMAIN:
+    when not earlyReturnOnZero: # Fused substraction and batch inversion
+      rootsMinusZ[i].diff(domain.rootsOfUnity[i], z)
+      if rootsMinusZ[i].isZero().bool():
+        index0 = i
+        invRootsMinusZ[i].setZero()
+        continue
+
+    invRootsMinusZ[i] = accInv
+    accInv *= rootsMinusZ[i]
+
+  accInv.inv_vartime()
+
+  for i in countdown(DOMAIN-1, 1):
+    if i == index0:
+      continue
+
+    invRootsMinusZ[i] *= accInv
+    accInv *= rootsMinusZ[i]
+
+  if index0 == 0:
+    invRootsMinusZ[0].setZero()
+  else: # invRootsMinusZ[0] was init to accInv=1
+    invRootsMinusZ[0] = accInv
+  
+  return invRootsMinusZ
+
+
+func compute_barycentric_coefficients* [PrecomputedWeightsObj]( point : var ECP_TwEdwards_Prj[Fp[Banderwagon]]): seq[ECP_TwEdwards_Prj[Fp[Banderwagon]]] =
  var lagrangeEval : array[DOMAIN, ECP_TwEdwards_Prj[Fp[Banderwagon]]]
 
  for i in uint64(0)..DOMAIN:
@@ -121,19 +163,96 @@ func compute_barycentric_coefficients* [PrecomputedWeightsObj]( point : ECP_TwEd
   var i_Fp: ECP_TwEdwards_Prj[Fp[Banderwagon]] = cast[ECP_TwEdwards_Prj[Fp[Banderwagon]]](i)
   
   lagrangeEval[i].diff(point, i_Fp)
+  lagrangeEval[i].prod(lagrangeEval[i],weight)
 
-  lagrangeEval[i].x.prod(lagrangeEval[i].x,weight.x)
-  lagrangeEval[i].y.prod(lagrangeEval[i].y,weight.y)
-  lagrangeEval[i].z.prod(lagrangeEval[i].z,weight.z)
   
-var totalProd : ECP_TwEdwards_Prj[Fp[Banderwagon]]
+ var totalProd : ECP_TwEdwards_Prj[Fp[Banderwagon]]
 
-totalProd.x.setOne()
-totalProd.y.setOne()
-totalProd.z.setOne()
+ totalProd.x.setOne()
+ totalProd.y.setOne()
+ totalProd.z.setOne()
 
-for i in uint64(0)..DOMAIN:
- var i_fr {.noInit.} : ECP_TwEdwards_Prj[Fp[Banderwagon]]
+ for i in uint64(0)..DOMAIN:
+  var i_Fp {.noInit.} : ECP_TwEdwards_Prj[Fp[Banderwagon]] = cast[EC_P](i)
+
+
+  var tmp {.noInit.} : EC_P
+  tmp.diff(point, i_Fp)
+  totalProd.x.prod(totalProd.x, tmp.x)
+  totalProd.y.prod(totalProd.y, tmp.y)
+  totalProd.z.prod(totalProd.z, tmp.z)
+
+  lagrangeEval = computeZMinusXi(lagrangeEval)
+
+  for i in uint64(0)..DOMAIN:
+    lagrangeEval[i].prod(lagrangeEval[i], totalProd)
+
+  return lagrangeEval
+
+func get_inverted_element* [precomp : var PrecomputedWeights] (element : var int, is_negative: var bool): EC_P =
+  let index = element -1 
+
+  if is_negative:
+    let midpoint = len(precomp.invertedDomain) / 2
+    index = index + midpoint
+  
+  return precomp.invertedDomain[index]
+
+func get_weight_ratios* [precomp: var PrecomputedWeights] (numerator: var int, denominator: var int): EC_P=
+
+  let a = precomp.barycentric_weights[numerator]
+  let midpoint = len(precomp.barycentric_weights) / 2
+
+  let b = precomp.barycentric_weights[denominator + midpoint]
+
+  var result {.noInit.}: EC_P
+  result.prod(a, b)
+  return result
+
+func get_barycentric_inverse_weight_inverses* [precomp: var PrecomputedWeights] (i: var int): EC_P=
+  let midpoint = len(precomp.barycentric_weights)/2
+  return precomp.barycentric_weights[i+midpoint]
+
+func abs_int_check* (x : var int) : int=
+  var is_negative {.noInit.}: bool
+  if x < 0:
+    is_negative = true
+
+  if is_negative:
+    return -x
+
+ 
+
+func division_on_domain* [precomp: var PrecomputedWeights](index: var uint8, f: var seq[EC_P]): seq[EC_P]=
+
+  var quotient {.noInit.} : array[DOMAIN, EC_P]
+  var is_negative : bool = true
+  let y = f[index]
+
+  for i in uint64(0)..DOMAIN:
+    if i != int(index):
+      let denominator = i - int(index)
+      let absDenominator = abs_int_check(denominator)
+
+      if absDenominator == denominator:
+        is_negative = false
+      
+      let denominatorInv = precomp.get_inverted_element(absDenominator, is_negative)
+
+      quotient[i].diff(f[i], y)
+      quotient[i].prod(quotient[i], denominatorInv)
+
+      let weight_ratios = precomp.get_weight_ratios(int(index), i)
+
+      var tmp {.noInit.}: EC_P
+      tmp.prod(weight_ratios, quotient[i])
+      quotient[index].diff(quotient[index], tmp)
+  
+  return quotient
+
+
+
+
 
 
 
