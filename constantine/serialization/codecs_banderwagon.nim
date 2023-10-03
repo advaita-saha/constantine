@@ -119,9 +119,10 @@ func deserialize*(dst: var EC_Prj, src: array[32, byte]): CttCodecEccStatus =
 ##
 ## ############################################################
 
-func serializeBatch*[N: static int](
-    dst: var array[N, array[32, byte]],
-    points: var array[N, EC_Prj]
+func serializeBatch*(
+    dst: ptr UncheckedArray[array[32, byte]],
+    points: ptr UncheckedArray[EC_Prj],
+    N: static int,
   ) : CttCodecEccStatus =
 
   # collect all the z coordinates
@@ -146,3 +147,9 @@ func serializeBatch*[N: static int](
 
   return cttCodecEcc_Success
 
+func serializeBatch*[N: static int](
+        dst: var array[N, array[32, byte]],
+        points: array[N, EC_Prj]): CttCodecEccStatus =
+  return serializeBatch(dst.asUnchecked(), points.asUnchecked(), N)
+
+  
