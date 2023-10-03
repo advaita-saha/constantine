@@ -557,7 +557,8 @@ const benchDesc = [
   "bench_ethereum_bls_signatures",
   "bench_evm_modexp_dos",
   "bench_gmp_modexp",
-  "bench_gmp_modmul"
+  "bench_gmp_modmul",
+  "bench_ethereum_verkle_primitives"
 ]
 
 # For temporary (hopefully) investigation that can only be reproduced in CI
@@ -974,3 +975,6 @@ task bench_hash_to_curve, "Run Hash-to-Curve benchmarks":
 # ------------------------------------------
 task bench_ethereum_bls_signatures, "Run Ethereum BLS signatures benchmarks - CC compiler":
   runBench("bench_ethereum_bls_signatures")
+
+task bench_ethereum_verkle_primitives, "Run benchmarks for Banderwagon":
+  runBench("bench_ethereum_verkle_primitives")
