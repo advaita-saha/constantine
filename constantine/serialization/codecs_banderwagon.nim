@@ -42,12 +42,6 @@ func serialize*(dst: var array[32, byte], P: EC_Prj): CttCodecEccStatus =
   ## 
   ## Returns cttCodecEcc_Success if successful
   ## Spec: https://hackmd.io/@6iQDuIePQjyYBqDChYw_jg/BJBNcv9fq#Serialisation
-
-  # Setting all bits to 0 for the point of infinity
-  if P.isInf().bool():
-    for i in 0 ..< dst.len:
-      dst[i] = byte 0
-    return cttCodecEcc_Success
   
   # Convert the projective points into affine format before encoding
   var aff {.noInit.}: EC_Aff
@@ -69,15 +63,6 @@ func deserialize_unchecked*(dst: var EC_Prj, src: array[32, byte]): CttCodecEccS
   ## 
   ## Returns cttCodecEcc_Success if successful
   ## https://hackmd.io/@6iQDuIePQjyYBqDChYw_jg/BJBNcv9fq#Serialisation
-  # If infinity, src must be all zeros
-  var check: bool = true
-  for i in 0 ..< src.len:
-    if src[i] != byte 0:
-      check = false
-      break
-  if check:
-    dst.setInf()
-    return cttCodecEcc_PointAtInfinity
   
   var t{.noInit.}: matchingBigInt(Banderwagon)
   t.unmarshal(src, bigEndian)

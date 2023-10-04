@@ -54,7 +54,7 @@ type
   Prj* = ECP_TwEdwards_Prj[Fp[Banderwagon]]
   Aff* = ECP_TwEdwards_Prj[Fp[Banderwagon]]
 
-const Iters = 9000
+const Iters = 1000
 
 proc separator*() = separator(152)
 
@@ -99,16 +99,16 @@ template bench(op: string, T: typed, iters: int, body: untyped): untyped =
   measure(iters, startTime, stopTime, startClk, stopClk, body)
   report(op, fixDisplay(T), startTime, stopTime, startClk, stopClk, iters)
 
-proc equalityBench*(T: typedesc, iters: int) =
-  when T is Aff:
-    let P = Banderwagon.getGenerator()
-    let Q = Banderwagon.getGenerator()
-  else:
-    var P, Q: Prj
-    P.fromAffine(Banderwagon.getGenerator())
-    Q.fromAffine(Banderwagon.getGenerator())
-  bench("Banderwagon Equality ", T, iters):
-    assert (P == Q).bool()
+# proc equalityBench*(T: typedesc, iters: int) =
+#   when T is Aff:
+#     let P = Banderwagon.getGenerator()
+#     let Q = Banderwagon.getGenerator()
+#   else:
+#     var P, Q: Prj
+#     P.fromAffine(Banderwagon.getGenerator())
+#     Q.fromAffine(Banderwagon.getGenerator())
+#   bench("Banderwagon Equality ", T, iters):
+#     assert (P == Q).bool()
 
 
 
@@ -119,21 +119,21 @@ proc serializaBench*(T: typedesc, iters: int) =
   bench("Banderwagon Serialization", T, iters):
     discard bytes.serialize(P)
 
-proc deserializeBench*(T: typedesc, iters: int) =
-  var bytes: array[32, byte]
-  var P: Prj
-  P.fromAffine(Banderwagon.getGenerator())
-  discard bytes.serialize(P)
-  bench("Banderwagon Deserialization", T, iters):
-    discard P.deserialize(bytes)
+# proc deserializeBench*(T: typedesc, iters: int) =
+#   var bytes: array[32, byte]
+#   var P: Prj
+#   P.fromAffine(Banderwagon.getGenerator())
+#   discard bytes.serialize(P)
+#   bench("Banderwagon Deserialization", T, iters):
+#     discard P.deserialize(bytes)
 
 proc main() =
-  separator()
-  # equalityBench(Prj, Iters)
-  # equalityBench(Aff, Iters)
   # separator()
+  # equalityBench(Aff, Iters)
+  # equalityBench(Prj, Iters)
+  separator()
   serializaBench(Prj, Iters)
-  deserializeBench(Prj, Iters)
+  # deserializeBench(Prj, Iters)
 
 main()
 notes()
