@@ -116,16 +116,18 @@ proc serializaBench*(T: typedesc, iters: int) =
   var bytes: array[32, byte]
   var P: Prj
   P.fromAffine(Banderwagon.getGenerator())
+  for i in 0 ..< 9:
+    P.double()
   bench("Banderwagon Serialization", T, iters):
     discard bytes.serialize(P)
 
-# proc deserializeBench*(T: typedesc, iters: int) =
-#   var bytes: array[32, byte]
-#   var P: Prj
-#   P.fromAffine(Banderwagon.getGenerator())
-#   discard bytes.serialize(P)
-#   bench("Banderwagon Deserialization", T, iters):
-#     discard P.deserialize(bytes)
+proc deserializeBench*(T: typedesc, iters: int) =
+  var bytes: array[32, byte]
+  var P: Prj
+  P.fromAffine(Banderwagon.getGenerator())
+  discard bytes.serialize(P)
+  bench("Banderwagon Deserialization", T, iters):
+    discard P.deserialize(bytes)
 
 proc main() =
   # separator()
