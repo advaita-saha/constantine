@@ -133,7 +133,7 @@ proc main() =
   # equalityBench(Prj, Iters)
   separator()
   serializaBench(Prj, Iters)
-  # deserializeBench(Prj, Iters)
+  deserializeBench(Prj, Iters)
 
 main()
 notes()
